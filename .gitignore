@@ -1,0 +1,7 @@
+# ignore data folder
+/data
+# ignore pycharm project file 
+.idea
+# ignore all tiff files
+*.tif
+
