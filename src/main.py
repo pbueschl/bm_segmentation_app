@@ -30,6 +30,17 @@ def main():
     # parse the arguments
     args = parser.parse_args()
 
+    # call inference function to generate desired mask
+    inferece(args, channels_of_interest)
+
+def inferece(args, channels_of_interest):
+    """
+
+    :param args:
+    :param channels_of_interest:
+    :return:
+    """
+
     # check if output directory exists, if not, create it
     if not os.path.exists(args.output):
         os.mkdir(args.output)
