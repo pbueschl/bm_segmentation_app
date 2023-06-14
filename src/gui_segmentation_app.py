@@ -2,7 +2,7 @@ from utils.inference import inference
 from gooey import Gooey, GooeyParser
 
 
-@Gooey(advanced=True)
+@Gooey(advanced=True, image_dir='/home/work/phd/projects/vessel_dapi_seg__nnunet/utils/icons/gooey_icons')
 def main():
     # define needed channels
     channels_of_interest = {
@@ -25,7 +25,7 @@ def main():
                         help='Path to input ims file')
     parser.add_argument('-o', '--output', required=True, widget='DirChooser',
                         help='Directory for storing the OME TIFF file with image and mask data')
-    parser.add_argument('-d', '--dataset_id', required=True, choices=['vessels', 'tissue'], widget="Dropdown",
+    parser.add_argument('-m', '--mask_selection', required=True, choices=['vessels', 'tissue'], widget="Dropdown",
                         default='vessels',
                         help='Select the desired mask that should be generated.')
     # parse the arguments
