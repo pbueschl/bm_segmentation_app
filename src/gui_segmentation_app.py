@@ -28,12 +28,19 @@ def main():
     parser.add_argument('-m', '--mask_selection', required=True, choices=['vessels', 'tissue'], widget="Dropdown",
                         default='vessels',
                         help='Select the desired mask that should be generated.')
+    parser.add_argument('-c', '--channel_selection', required=True, choices=list(channels_of_interest.keys())[1:],
+                        widget="Dropdown",
+                        help='Select the desired channel of vessel staining that should be used in addition to the DAPI channel.')
     # parse the arguments
     args = parser.parse_args()
 
     # transform the selected mask to the according dataset id
-    args.dataset_id = mask_dataset_id_dict[args.dataset_id]
-
+    args.dataset_id = mask_dataset_id_dict[args.mask_selection]
+    # modify channels_of_interest dict
+    channels_of_interest = {
+        'dapi': channels_of_interest['dapi'],
+        args.channel_selection: channels_of_interest[args.channel_selection],
+    }
     # call inference function to generate desired mask
     inference(args, channels_of_interest)
 
