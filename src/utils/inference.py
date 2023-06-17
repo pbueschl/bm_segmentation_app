@@ -3,6 +3,7 @@ import tifffile as tif
 import numpy as np
 import nibabel as nib
 import sys
+import shutil
 sys.path.append('..')
 from utils import ims_files, utils
 import subprocess
@@ -130,8 +131,8 @@ def inference(args, channels_of_interest):
     predicted_mask_array = predicted_mask_array.transpose((2, 1, 0)) * 128
     # expand dimension of predicted mask array from ZYX to ZCYX
     predicted_mask_array = np.expand_dims(predicted_mask_array, axis=1).astype(np.uint8)
-    # delete cache directory and files ToDo:
-    #shutil.rmtree('cache')
+    # delete cache directory and files:
+    shutil.rmtree('cache')
     # concatenate image data with the generated mask ToDo
     output_data_array = np.concatenate((input_data_array, predicted_mask_array), axis=1)
     # output_data_array = np.concatenate((inference_data_array, predicted_mask_array), axis=1)

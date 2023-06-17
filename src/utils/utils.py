@@ -50,9 +50,9 @@ def select_channels(data_array, metadata, channels_of_interest_dict):
                 channels_of_interest_indices_list.append(available_channels_list.index(channel_name))
                 # stop for loop
                 break
-            # if for loop was not stopped raise an error, that channel of interest is not present in the passed data.
-            raise ValueError(f'The expected channel "{unified_channel_name}" does not seem to exist in the passed data'
-                             f'file. Please check the data and/or the channel naming convention of the source file.')
+        # if for loop was not stopped raise an error, that channel of interest is not present in the passed data.
+        raise ValueError(f'The expected channel "{unified_channel_name}" does not seem to exist in the passed data'
+                         f'file. Please check the data and/or the channel naming convention of the source file.')
     # return data array of selected channels
     return data_array[:, channels_of_interest_indices_list, :, :]
 
