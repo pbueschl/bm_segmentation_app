@@ -4,6 +4,7 @@ import numpy as np
 import nibabel as nib
 import sys
 import shutil
+
 sys.path.append('..')
 from utils import ims_files, utils
 import subprocess
@@ -64,6 +65,44 @@ def get_inference_command(dataset_id, input_folder, output_folder):
     return inference_command, postprocessing_command
 
 
+def create_metadict_and_save_ome_tiff_file(data_array, channel_names, metadata_dict, path_to_output_file):
+    """
+
+    :param data_array:
+    :param channel_names:
+    :param metadata_dict:
+    :param path_to_output_file:
+    :return:
+    """
+    # convert channel names to list if it is not already of type list
+    if type(channel_names) is not list:
+        channel_names = eval(channel_names)
+    # check dimension of data_array
+    if data_array.shape[1] > 3:
+        # update axes in metadata_dict
+        metadata_dict['axes'] = metadata_dict['axes_info'] = 'ZCYX'
+        # reset hyperstack flag in metadata_dict
+        metadata_dict['hyperstack'] = True
+    else:
+        # update axes in metadata_dict
+        metadata_dict['axes'] = metadata_dict['axes_info'] = 'ZYX'
+        # reset hyperstack flag in metadata_dict
+        metadata_dict['hyperstack'] = False
+
+    # update channels information and names
+    metadata_dict['channels'] = len(data_array.shape[1])
+    metadata_dict['channel_names'] = [s.lower() for s in channel_names]
+
+    # print status message
+    print(f'Save concatenated data array as OME TIFF file at "{path_to_output_ome_tiff_file}"...')
+    # save resulting ome tiff file
+    tif.imwrite(path_to_output_file,
+                data_array,
+                shape=data_array.shape,
+                imagej=True,
+                metadata=metadata_dict)
+
+
 def inference(args, channels_of_interest):
     """
 
@@ -109,7 +148,8 @@ def inference(args, channels_of_interest):
     path_to_nnunet_results = os.environ['nnUNet_results']
     # get home folder
     path_to_home_folder = os.environ['HOME']
-    inference_command, postprocessing_command = get_inference_command(args.dataset_id, path_to_input_cache, path_to_output_cache)
+    inference_command, postprocessing_command = get_inference_command(args.dataset_id, path_to_input_cache,
+                                                                      path_to_output_cache)
     # construct command to run nnUNet_predict script
     bash_command = f' export nnUNet_raw="{path_to_nnunet_raw}";\
                            export nnUNet_preprocessed="{path_to_nnunet_preprocessed}";\
@@ -133,33 +173,55 @@ def inference(args, channels_of_interest):
     predicted_mask_array = np.expand_dims(predicted_mask_array, axis=1).astype(np.uint8)
     # delete cache directory and files:
     shutil.rmtree('cache')
-    # concatenate image data with the generated mask ToDo
-    output_data_array = np.concatenate((input_data_array, predicted_mask_array), axis=1)
-    # output_data_array = np.concatenate((inference_data_array, predicted_mask_array), axis=1)
 
+    # print status message
+    print(f'Save resulting OME TIFF files at "{args.output}"...')
+
+    # ------------------------ save predicted mask ------------------------
+    # define mask name
+    mask_name = f'predicted_{args.mask_selection}_mask'
+    # define path to output file
+    path_to_output_ome_tiff_file = os.path.join(args.output,
+                                                f'{os.path.splitext(os.path.basename(args.input))[0]}__vessel_mask.ome.tif')
+    # save resulting ome tiff file
+    create_metadict_and_save_ome_tiff_file(predicted_mask_array, [mask_name], metadata, path_to_output_ome_tiff_file)
+
+    # ------------------------ save predicted mask together with used signal channels ------------------------
+    # define channel names
+    channel_names = list(channels_of_interest.keys())
+    channel_names.append(mask_name)
+
+    # concatenate image data with the generated mask
+    output_data_array = np.concatenate((inference_data_array, predicted_mask_array), axis=1)
+
+    # define path to output file
+    path_to_output_ome_tiff_file = os.path.join(args.output,
+                                                f'{os.path.splitext(os.path.basename(args.input))[0]}__{"__".join(channel_names)}.ome.tif')
+    # save resulting ome tiff file
+    create_metadict_and_save_ome_tiff_file(output_data_array, channel_names, metadata, path_to_output_ome_tiff_file)
+
+    # ------------------------ save predicted mask together with all channels from input file ------------------------
     # read list of channel names from metadata
     channel_names = metadata['channel_names']
     # convert channel names to list if it is not already of type list
     if type(channel_names) is not list:
         channel_names = eval(channel_names)
-    # add predicted mask to channel names ToDo:
-    # channel_names = list(channels_of_interest.keys())
-    channel_names.append('predicted_mask_vessels')
-    # update metadata
-    metadata['channel_names'] = channel_names
-    metadata['channels'] = len(channel_names)
+    # define channel names
+    channel_names.append(mask_name)
 
-    # define output file name
+    # concatenate image data with the generated mask
+    output_data_array = np.concatenate((input_data_array, predicted_mask_array), axis=1)
+
+    # define path to output file
     path_to_output_ome_tiff_file = os.path.join(args.output,
-                                                f'{os.path.splitext(os.path.basename(args.input))[0]}.ome.tif')
+                                                f'{os.path.splitext(os.path.basename(args.input))[0]}__all_channels.ome.tif')
+    # save resulting ome tiff file
+    create_metadict_and_save_ome_tiff_file(output_data_array, channel_names, metadata, path_to_output_ome_tiff_file)
+
     # print status message
     print(f'Save concatenated data array as OME TIFF file at "{path_to_output_ome_tiff_file}"...')
     # save resulting ome tiff file
-    tif.imwrite(path_to_output_ome_tiff_file,
-                output_data_array,
-                shape=output_data_array.shape,
-                imagej=True,
-                metadata=metadata)
+    create_metadict_and_save_ome_tiff_file()
 
     # print status message
     print(f'Finished mask generation for {args.input}!')
