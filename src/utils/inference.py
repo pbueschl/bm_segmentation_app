@@ -94,7 +94,7 @@ def create_metadict_and_save_ome_tiff_file(data_array, channel_names, metadata_d
     metadata_dict['channel_names'] = [s.lower() for s in channel_names]
 
     # print status message
-    print(f'Save concatenated data array as OME TIFF file at "{path_to_output_ome_tiff_file}"...')
+    print(f'Save concatenated data array as OME TIFF file at "{path_to_output_file}"...')
     # save resulting ome tiff file
     tif.imwrite(path_to_output_file,
                 data_array,
