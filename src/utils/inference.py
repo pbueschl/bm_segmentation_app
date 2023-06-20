@@ -90,7 +90,7 @@ def create_metadict_and_save_ome_tiff_file(data_array, channel_names, metadata_d
         metadata_dict['hyperstack'] = False
 
     # update channels information and names
-    metadata_dict['channels'] = len(data_array.shape[1])
+    metadata_dict['channels'] = data_array.shape[1]
     metadata_dict['channel_names'] = [s.lower() for s in channel_names]
 
     # print status message
@@ -154,10 +154,10 @@ def inference(args, channels_of_interest):
     bash_command = f' export nnUNet_raw="{path_to_nnunet_raw}";\
                            export nnUNet_preprocessed="{path_to_nnunet_preprocessed}";\
                            export nnUNet_results="{path_to_nnunet_results}";\
-                            . {path_to_home_folder}/anaconda3/bin/activate; \
-                            conda activate nnunet; \
-                            {inference_command}; \
-                            {postprocessing_command}'
+                            . {path_to_home_folder}/mambaforge-pypy3/bin/activate; \
+                            mamba activate segtool; \
+                            {inference_command}' #; \
+    #                        {postprocessing_command}'
     # run inference
     subprocess.run(bash_command, shell=True, check=True, executable='/bin/bash')
 

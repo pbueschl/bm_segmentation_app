@@ -6,3 +6,5 @@
 *.tif
 # ignore pycache
 __pycache__/
+# ignore files in temp folder
+temp
