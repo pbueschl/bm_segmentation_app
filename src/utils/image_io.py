@@ -1,8 +1,8 @@
-import tifffile
+import tifffile as tif
 import h5py
 import numpy as np
 import os
-import argparse
+import cv2
 
 
 def read_image_from_ims_file(path_to_ims_file):
@@ -71,6 +71,25 @@ def read_image_from_ims_file(path_to_ims_file):
     return image_data_array, metadata_dict
 
 
+def read_ome_tiff_image_and_metadata(path_to_ome_tiff_file):
+    """
+    Opens an OME TIFF file and returns a numpy array of the image data together with a metadata containing dictionary
+    :param path_to_ome_tiff_file: path to an OME TIFF file (string)
+    :return: image data (numpy.ndarray), metadata (dict)
+    """
+    with tif.TiffFile(path_to_ome_tiff_file) as f:
+        # read image data array
+        image_data_array = f.asarray()
+        # read metadata
+        metadata = f.imagej_metadata
+        # if channel_names are present in the metadata convert them to a list
+        if 'channel_names' in metadata:
+            metadata['channel_names'] = eval(metadata['channel_names'])
+
+    # return the metadata
+    return image_data_array, metadata
+
+
 def save_ome_tiff_file(image_data_array,
                        metadata_dict,
                        path_to_new_ome_file,
@@ -120,50 +139,28 @@ def save_ome_tiff_file(image_data_array,
         path_to_new_ome_file = os.path.join(path_to_new_ome_file, new_filename)
 
     # save the image data array as ome-tiff file
-    tifffile.imwrite(path_to_new_ome_file,
-                     image_data_array,
-                     shape=image_data_array.shape,
-                     imagej=True,
-                     metadata=metadata_dict)
+    tif.imwrite(path_to_new_ome_file,
+                image_data_array,
+                shape=image_data_array.shape,
+                imagej=True,
+                metadata=metadata_dict)
     # print status message
     print(f'Saved file at {path_to_new_ome_file}!')
 
 
-def main():
-    # Create the parser object
-    parser = argparse.ArgumentParser(description='Convert Imaris ims files to OME TIFF files')
-
-    # Add arguments for the input path and output directory
-    parser.add_argument('-i', '--input', required=True,
-                        help='Path to input Imaris ims file or directory')
-    parser.add_argument('-o', '--output', required=True,
-                        help='Path for storing the generated OME TIFF files')
-
-    # Parse the arguments
-    args = parser.parse_args()
-
-    # check if output directory exists, if not create it
-    if not os.path.exists(args.output):
-        os.makedirs(args.output)
-
-    # check if passed input path belongs to a file or directory
-    if os.path.isfile(args.input):
-        # if it belongs to a file create a file list with this single entry
-        ims_file_list = [args.input]
-    else:
-        # read all ims files from the passed directory
-        ims_file_list = [os.path.join(args.input, f) for f in os.listdir(args.input) if f.endswith('.ims')]
-
-    # iterate ims file list
-    for ims_file in ims_file_list:
-        # read image from ims file
-        data_array, metadata_dict = read_image_from_ims_file(ims_file)
-        # generate output path to the new ome tiff file
-        output_file_path = os.path.join(args.output, f"{ims_file.split(sep='/')[-1][:-3]}ome.tif")
-        # write data to ome tiff file
-        save_ome_tiff_file(data_array, metadata_dict, output_file_path)
+def save_simple_tif_file(image_array, path):
+    # save the image data array as ome-tiff file
+    tif.imwrite(path,
+                image_array,
+                shape=image_array.shape,
+                imagej=True)
 
 
-if __name__ == "__main__":
-    main()
+def save_slices_as_jpg(image_3d, folder_path, prefix="slice"):
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+
+    for i, slice_2d in enumerate(image_3d):
+        filename = os.path.join(folder_path, f"{prefix}_{i}.jpg")
+        cv2.imwrite(filename, slice_2d * 255)  # Assuming image_3d has floating point values between 0 and 1
 

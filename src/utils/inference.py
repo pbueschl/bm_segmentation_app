@@ -4,9 +4,10 @@ import numpy as np
 import nibabel as nib
 import sys
 import shutil
+import gc
 
 sys.path.append('..')
-from utils import ims_files, utils
+from utils import ims_files, utils, image_io, image_spliter
 import subprocess
 
 
@@ -78,16 +79,16 @@ def create_metadict_and_save_ome_tiff_file(data_array, channel_names, metadata_d
     if type(channel_names) is not list:
         channel_names = eval(channel_names)
     # check dimension of data_array
-    if data_array.shape[1] > 3:
-        # update axes in metadata_dict
-        metadata_dict['axes'] = metadata_dict['axes_info'] = 'ZCYX'
-        # reset hyperstack flag in metadata_dict
-        metadata_dict['hyperstack'] = True
-    else:
-        # update axes in metadata_dict
-        metadata_dict['axes'] = metadata_dict['axes_info'] = 'ZYX'
-        # reset hyperstack flag in metadata_dict
-        metadata_dict['hyperstack'] = False
+    # if len(channel_names) > 1:
+    # update axes in metadata_dict
+    metadata_dict['axes'] = metadata_dict['axes_info'] = 'ZCYX'
+    # reset hyperstack flag in metadata_dict
+    metadata_dict['hyperstack'] = True
+    # else:
+    # update axes in metadata_dict
+    #    metadata_dict['axes'] = metadata_dict['axes_info'] = 'ZYX'
+    # reset hyperstack flag in metadata_dict
+    #    metadata_dict['hyperstack'] = False
 
     # update channels information and names
     metadata_dict['channels'] = data_array.shape[1]
@@ -122,8 +123,11 @@ def inference(args, channels_of_interest):
     print(f'Select necessary channels...')
     # select needed channels
     inference_data_array = utils.select_channels(input_data_array, metadata, channels_of_interest)
-
+    # delete input_data_array
+    # del(input_data_array)
+    #
     # create cache directory for saving files needed for running inference
+    path_to_cache = 'cache'
     path_to_input_cache = 'cache/input'
     path_to_output_cache = 'cache/output'
     if not os.path.exists(path_to_input_cache):
@@ -131,11 +135,32 @@ def inference(args, channels_of_interest):
     if not os.path.exists(path_to_output_cache):
         os.makedirs(path_to_output_cache)
 
-    # print status message
-    print(f'Save selected channels in cache...')
+    # ------------------------ write input data and channels of interest to cache ------------------------
+    # define path to cache file
+    path_to_cache_input_data_array = "cache/input_data_array.ome.tif"
+    # save resulting ome tiff file
+    tif.imwrite(path_to_cache_input_data_array,
+                input_data_array,
+                shape=input_data_array.shape,
+                imagej=True)
 
-    # safe channels in a nifti files
-    utils.save_data_channels_for_inference(inference_data_array, metadata, path_to_input_cache)
+    # define path to cache file
+    path_to_cache_coi = "cache/coi.ome.tif"
+    # save resulting ome tiff file
+    tif.imwrite(path_to_cache_coi,
+                channels_of_interest,
+                shape=channels_of_interest.shape,
+                imagej=True,
+                metadata=metadata)
+
+    del input_data_array, channels_of_interest
+    gc.collect()
+    # ---------------------------------------------------------------------------
+
+    # instantiate image split processor
+    processor = image_spliter.IMSProcessor(path_to_cache_input_data_array, path_to_cache, 67*2*2000*3000, channels_of_interest)
+    # split image into chunks
+    processor.process_chunks()
 
     # print status message
     print(f'Run mask generation...')
@@ -156,7 +181,7 @@ def inference(args, channels_of_interest):
                            export nnUNet_results="{path_to_nnunet_results}";\
                             . {path_to_home_folder}/mambaforge-pypy3/bin/activate; \
                             mamba activate segtool; \
-                            {inference_command}' #; \
+                            {inference_command}'  # ; \
     #                        {postprocessing_command}'
     # run inference
     subprocess.run(bash_command, shell=True, check=True, executable='/bin/bash')
@@ -169,11 +194,19 @@ def inference(args, channels_of_interest):
 
     # reshape predicted mask array and change boolen values to higher ones for better presentability
     predicted_mask_array = predicted_mask_array.transpose((2, 1, 0)) * 128
+
+    # load input data array
+    input_data_array, _ = image_io.read_ome_tiff_image_and_metadata(path_to_cache_input_data_array)
+    # load input data array
+    channels_of_interest, _ = image_io.read_ome_tiff_image_and_metadata(path_to_cache_coi)
+
+    # delete cache directory and files:
+    # shutil.rmtree('cache')
+    # remove deleted variable from memory
+    gc.collect()
+
     # expand dimension of predicted mask array from ZYX to ZCYX
     predicted_mask_array = np.expand_dims(predicted_mask_array, axis=1).astype(np.uint8)
-    # delete cache directory and files:
-    shutil.rmtree('cache')
-
     # print status message
     print(f'Save resulting OME TIFF files at "{args.output}"...')
 
@@ -219,9 +252,7 @@ def inference(args, channels_of_interest):
     create_metadict_and_save_ome_tiff_file(output_data_array, channel_names, metadata, path_to_output_ome_tiff_file)
 
     # print status message
-    print(f'Save concatenated data array as OME TIFF file at "{path_to_output_ome_tiff_file}"...')
-    # save resulting ome tiff file
-    create_metadict_and_save_ome_tiff_file()
+    print(f'Save results as OME TIFF files at "{args.output}"...')
 
     # print status message
     print(f'Finished mask generation for {args.input}!')

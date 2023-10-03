@@ -2,7 +2,7 @@ from utils.inference import inference
 from gooey import Gooey, GooeyParser
 
 
-@Gooey(advanced=True, image_dir='/home/work/phd/projects/vessel_dapi_seg__nnunet/utils/icons/gooey_icons')
+@Gooey(advanced=True, image_dir='/home/clab_member/projects/bm_segmentation_app/utils/icons/gooey_icons')
 def main():
     # define needed channels
     channels_of_interest = {
@@ -12,7 +12,7 @@ def main():
     }
     # define mask dataset dict, assigns each mask type a dataset
     mask_dataset_id_dict = {
-        'vessels': 4,
+        'vessels': 5,
         'tissue': 0
     }
     # create the parser object
