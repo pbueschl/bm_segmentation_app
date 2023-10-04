@@ -122,7 +122,7 @@ def inference(args, channels_of_interest):
     # print status message
     print(f'Select necessary channels...')
     # select needed channels
-    inference_data_array = utils.select_channels(input_data_array, metadata, channels_of_interest)
+    inference_data_array, inference_metadata = utils.select_channels(input_data_array, metadata, channels_of_interest)
     # delete input_data_array
     # del(input_data_array)
     #
@@ -142,25 +142,31 @@ def inference(args, channels_of_interest):
     tif.imwrite(path_to_cache_input_data_array,
                 input_data_array,
                 shape=input_data_array.shape,
-                imagej=True)
+                imagej=True,
+                metadata=metadata)
 
     # define path to cache file
     path_to_cache_coi = "cache/coi.ome.tif"
     # save resulting ome tiff file
     tif.imwrite(path_to_cache_coi,
-                channels_of_interest,
-                shape=channels_of_interest.shape,
+                inference_data_array,
+                shape=inference_data_array.shape,
                 imagej=True,
-                metadata=metadata)
+                metadata=inference_metadata)
 
-    del input_data_array, channels_of_interest
+    del input_data_array, inference_data_array
     gc.collect()
     # ---------------------------------------------------------------------------
 
     # instantiate image split processor
-    processor = image_spliter.IMSProcessor(path_to_cache_input_data_array, path_to_cache, 67*2*2000*3000, channels_of_interest)
+    max_pixels = 67*2*2500*3500
+
+    processor = image_spliter.IMSProcessor(path_to_cache_input_data_array,
+                                           path_to_cache,
+                                           max_pixels,
+                                           channels_of_interest)
     # split image into chunks
-    processor.process_chunks()
+    processor.split_image()
 
     # print status message
     print(f'Run mask generation...')
@@ -188,20 +194,16 @@ def inference(args, channels_of_interest):
 
     # print status message
     print(f'Load generated mask...')
-    # load generated mask
-    img = nib.load('cache/output/infimg_000.nii.gz')
-    predicted_mask_array = img.get_fdata()
-
-    # reshape predicted mask array and change boolen values to higher ones for better presentability
-    predicted_mask_array = predicted_mask_array.transpose((2, 1, 0)) * 128
+    # stitch segmentation mask and load it
+    predicted_mask_array = processor.stitch_segmentation_mask()
 
     # load input data array
     input_data_array, _ = image_io.read_ome_tiff_image_and_metadata(path_to_cache_input_data_array)
-    # load input data array
-    channels_of_interest, _ = image_io.read_ome_tiff_image_and_metadata(path_to_cache_coi)
+    # load channels of interest data array
+    inference_data_array, _ = image_io.read_ome_tiff_image_and_metadata(path_to_cache_coi)
 
     # delete cache directory and files:
-    # shutil.rmtree('cache')
+    shutil.rmtree('cache')
     # remove deleted variable from memory
     gc.collect()
 

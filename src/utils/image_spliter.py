@@ -76,11 +76,13 @@ def select_channels(data_array, metadata, channels_of_interest_dict):
 
 class IMSProcessor:
     def __init__(self, path_to_input_tif_file, path_to_cache, max_pixels, channels_of_interest_dict, overlap=0.1):
+        self.tile_info_dict = None
         self.number_of_overlapping_pixels = None
         self.tile_division_factors = None
         self.path_to_input_data = path_to_input_tif_file
         self.path_to_cache = path_to_cache
         self.path_to_cache_input = os.path.join(path_to_cache, 'input')
+        self.path_to_cache_output = os.path.join(path_to_cache, 'output')
         self.input_metadata = None
         self.__read_metadata_dict()
         self.max_pixels = max_pixels
@@ -130,7 +132,7 @@ class IMSProcessor:
             if n % i == 0:
                 return i, n // i
 
-    def process_chunks(self):
+    def split_image(self):
         # calculate number of total pixels
         number_of_pixels = np.prod(self.image_shape)
 
@@ -170,7 +172,7 @@ class IMSProcessor:
         # initialize till id counter
         till_id = 0
         # initialize till information dict
-        till_info_dict = {}
+        tile_info_dict = {}
         # iterate tiles in y direction
         for y_tile_idx in range(tiles_in_y_direction):
             # define start index
@@ -199,12 +201,51 @@ class IMSProcessor:
                 # save tile for inference as a nifti file
                 save_data_channels_for_inference(tile_array, self.input_metadata, self.path_to_cache_input, till_id)
                 # update till info dict
-                till_info_dict[till_id] = {"y_start_idx": y_start_idx,
+                tile_info_dict[till_id] = {"y_start_idx": y_start_idx,
                                            "y_stop_idx": y_stop_idx,
                                            "x_start_idx": x_start_idx,
-                                           "x_stop_idx": x_start_idx}
+                                           "x_stop_idx": x_stop_idx}
                 # increment till id
                 till_id += 1
+        # add tile info dict to attributes
+        self.tile_info_dict = tile_info_dict
+
+    def stitch_segmentation_mask(self):
+        # get nifti files with the processed segmentations
+        segmentation_nifti_file_list = sorted([os.path.join(self.path_to_cache_output, f) for f in os.listdir(self.path_to_cache_output) if f.endswith('.nii.gz')])
+
+        # initialize list for segmentation mask arrays
+        segmentation_masks_list = []
+
+        # iterate segmentation mask files and load the data arrays
+        for file_name in segmentation_nifti_file_list:
+            # print status message
+            print("Load segmentation mask ", file_name, " for stitching...")
+            # load segmentation mask
+            segmentation_mask_array = nib.load(file_name)
+            segmentation_mask_array = segmentation_mask_array.get_fdata()
+            # reshape mask array
+            segmentation_mask_array = segmentation_mask_array.transpose((2, 1, 0))
+            # add segmentation mask array to list of segmentation masks
+            segmentation_masks_list.append(segmentation_mask_array)
+
+        # create an array with ones of the size of the input image as basis for the stitched segmentation mask
+        stitched_segmentation_mask = np.ones((self.image_shape[0], self.image_shape[2], self.image_shape[3]))
+        # iterate available segmentation mask tiles
+        for i, mask in enumerate(segmentation_masks_list):
+            stitched_segmentation_mask[:,
+                                        self.tile_info_dict[i]["y_start_idx"]: self.tile_info_dict[i]["y_stop_idx"],
+                                        self.tile_info_dict[i]["x_start_idx"]: self.tile_info_dict[i]["x_stop_idx"]] = np.logical_and(
+                stitched_segmentation_mask[:,
+                self.tile_info_dict[i]["y_start_idx"]: self.tile_info_dict[i]["y_stop_idx"],
+                self.tile_info_dict[i]["x_start_idx"]: self.tile_info_dict[i]["x_stop_idx"]], mask
+            )
+
+        # convert datatype of stitched segmentation mask to int and multiply it with a factor for better visualization
+        stitched_segmentation_mask = stitched_segmentation_mask * 128
+
+        # return the stitched segmentation mask
+        return stitched_segmentation_mask.astype(np.uint8)
 
 
 '''
@@ -222,11 +263,13 @@ if not os.path.exists(path_to_input_cache):
 if not os.path.exists(path_to_output_cache):
     os.makedirs(path_to_output_cache)
 
-path_input_tif = "/home/work/phd/projects/vessel_dapi_seg__nnunet/data/results/BMquantVI_Femur_7_Meta.ome.tif"
+# import src.utils.image_spliter as ims
+path_input_tif_file= '/home/work/phd/projects/vessel_dapi_seg__nnunet/data/test_ng_20231004/cache/input_data_array.ome.tif'
+path_to_cache = '/home/work/phd/projects/vessel_dapi_seg__nnunet/data/test_ng_20231004/cache'
+max_pixels = 67*2*2000*1000
 channels_of_interest = {
     'dapi': ['dapi'],
     'endomucin': ['endomucin']}
-import src.utils.inference_class_based as icb
-processor = icb.IMSProcessor(path_input_tif, "cache", 63*2*2000*2000, channels_of_interest)
-processor.process_chunks()
+proc = ims.IMSProcessor(path_input_tif_file, path_to_cache, max_pixels, channels_of_interest)
+proc.split_image()
 print("ende")'''
