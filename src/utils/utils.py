@@ -37,7 +37,8 @@ def select_channels(data_array, metadata, channels_of_interest_dict):
     # if available channels list is not of type list, convert it to type list
     if type(available_channels_list) is not list:
         available_channels_list = eval(available_channels_list)
-
+    # print status message
+    print(f"The following channels are available in the input file: {available_channels_list}")
     # initialize empty list for indices of channels of interest
     channels_of_interest_indices_list = []
     # iterate channels of interest
@@ -56,7 +57,8 @@ def select_channels(data_array, metadata, channels_of_interest_dict):
     # update metadata
     metadata['channel_names'] = list(channels_of_interest_dict.keys())
     metadata['channels'] = len(metadata['channel_names'])
-
+    # print status message
+    print(f"Return the following channels: {metadata['channels']}")
     # return data array and metadata of selected channels
     return data_array[:, channels_of_interest_indices_list, :, :], metadata
 

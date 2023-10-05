@@ -137,7 +137,7 @@ def inference(args, channels_of_interest):
 
     # ------------------------ write input data and channels of interest to cache ------------------------
     # define path to cache file
-    path_to_cache_input_data_array = "cache/input_data_array.ome.tif"
+    path_to_cache_input_data_array = os.path.join(path_to_cache, "input_data_array.ome.tif")
     # save resulting ome tiff file
     tif.imwrite(path_to_cache_input_data_array,
                 input_data_array,
@@ -146,7 +146,7 @@ def inference(args, channels_of_interest):
                 metadata=metadata)
 
     # define path to cache file
-    path_to_cache_coi = "cache/coi.ome.tif"
+    path_to_cache_coi = os.path.join(path_to_cache, "coi.ome.tif")
     # save resulting ome tiff file
     tif.imwrite(path_to_cache_coi,
                 inference_data_array,
