@@ -75,18 +75,19 @@ def select_channels(data_array, metadata, channels_of_interest_dict):
 
 
 class IMSProcessor:
-    def __init__(self, path_to_input_tif_file, path_to_cache, max_pixels, channels_of_interest_dict, overlap=0.1):
+    def __init__(self, path_to_input_ims_file, path_to_cache, max_pixels, channels_of_interest_dict, overlap=0.1):
         self.tile_info_dict = None
         self.number_of_overlapping_pixels = None
         self.tile_division_factors = None
-        self.path_to_input_data = path_to_input_tif_file
+        self.path_to_input_data = path_to_input_ims_file
         self.path_to_cache = path_to_cache
         self.path_to_cache_input = os.path.join(path_to_cache, 'input')
         self.path_to_cache_output = os.path.join(path_to_cache, 'output')
-        self.input_metadata = None
-        self.__read_metadata_dict()
-        self.max_pixels = max_pixels
         self.channels_of_interest_dict = channels_of_interest_dict
+        self.input_metadata = None
+        self.channel_name_to_ims_identifier_dict = None
+        self.read_metadata_from_ims_file()
+        self.max_pixels = max_pixels
         self.overlap = overlap
         self.number_of_tiles = 1
         self.image_shape = (self.input_metadata["image_size"]['Z'],
@@ -95,34 +96,78 @@ class IMSProcessor:
                             self.input_metadata["image_size"]['X'])
         self.tile_size = None
 
-
-    def __read_metadata_dict(self):
+    def read_metadata_from_ims_file(self):
         """
-           Opens an OME TIFF file and reads metadata into dictionary
+        Reads image data together with relevant metadata from an Imaris ims file and returns the image data together
+        with the extracted metadata.
 
-           """
-        with tif.TiffFile(self.path_to_input_data) as f:
-            # read metadata
-            metadata = f.imagej_metadata
-            # if channel_names are present in the metadata convert them to a list
-            if 'channel_names' in metadata:
-                metadata['channel_names'] = eval(metadata['channel_names'])
-            # if image_size is present in the metadata convert them to a dict
-            if 'image_size' in metadata:
-                metadata['image_size'] = eval(metadata['image_size'])
-            # save metadata as an attribute
-            self.input_metadata = metadata
-
-    def __read_image_array(self):
+        :param path_to_ims_file: path to the ims file from which the data should be extracted (string)
+        :return: image_data_array (numpy.ndarray), metadata_dict (dict)
         """
-           Opens an OME TIFF file and reads image array
+        # print status message
+        print(f'Read "{self.path_to_input_data}" ...')
+        # open ims file
+        with h5py.File(self.path_to_input_data, 'r') as f:
+            # generate list of available channels
+            channel_list = [ch_id for ch_id in f['DataSetInfo'] if
+                            ch_id.startswith('Channel') and 'Name' in f['DataSetInfo'][ch_id].attrs.keys()]
 
-           """
-        with tif.TiffFile(self.path_to_input_data) as f:
-            # read metadata
-            image_array = f.asarray()
+            channel_names = []
 
-        return image_array
+            # iterate channels
+            for channel in channel_list:
+                # read channel names
+                ch_name_temp = f['DataSetInfo'][channel].attrs['Name'].tobytes().decode('ascii', 'ignore')
+                channel_names.append(ch_name_temp)
+                # check if channel is present in the list of possible name variants of the channels of interest
+                for k, v in self.channels_of_interest_dict.items():
+                    if ch_name_temp in v:
+                        # replace list of possible name variants with used name
+                        self.channels_of_interest_dict[k] = ch_name_temp
+
+            # initialize empty dict for voxel and image sizes
+            voxel_size = {}
+            image_size = {}
+            # read min and max metric coordinates as well as pixel size in all three dimensions and calculate voxel size
+            for i, d in [(0, 'X'), (1, 'Y'), (2, 'Z')]:
+                # read the highest metrical coordinate
+                max_coord = float(f['DataSetInfo']['Image'].attrs[f'ExtMax{i}'].tobytes().decode('ascii', 'decode'))
+                # read the lowest metrical coordinate
+                min_coord = float(f['DataSetInfo']['Image'].attrs[f'ExtMin{i}'].tobytes().decode('ascii', 'decode'))
+                # read the pixel size
+                pixel_size = int(f['DataSetInfo']['Image'].attrs[d].tobytes().decode('ascii', 'decode'))
+
+                # calculate metrical voxel size
+                voxel_size[d] = (max_coord - min_coord) / pixel_size
+
+                # add dimension size to image size dict
+                image_size[d] = pixel_size
+
+                # add dictionary that translates channel names to channel identifiers of the ims file as argument
+                self.channel_name_to_ims_identifier_dict = {
+                    f['DataSetInfo'][channel].attrs['Name'].tobytes().decode('ascii', 'ignore'): channel for channel in
+                    channel_list}
+
+        # generate meta data dict
+        metadata_dict = {'axes': 'ZCYX',
+                         'axes_info': 'ZCYX',
+                         'channels': len(channel_names),
+                         'slices': image_size['Z'],
+                         'hyperstack': True,
+                         'mode': 'grayscale',
+                         'Channel': [{'Name': s.lower()} for s in channel_names],
+                         'image_size': image_size,
+                         'voxel_size': voxel_size,
+                         'PhysicalSizeX': voxel_size['X'],
+                         'PhysicalSizeXUnit': 'um',
+                         'PhysicalSizeY': voxel_size['Y'],
+                         'PhysicalSizeYUnit': 'um',
+                         'PhysicalSizeZ': voxel_size['Z'],
+                         'PhysicalSizeZUnit': 'um',
+                         'original_file': os.path.basename(self.path_to_input_data)}
+
+        # return dictionary with relevant metadata
+        self.input_metadata = metadata_dict
 
     def closest_factors(self, n):
         """
@@ -151,18 +196,18 @@ class IMSProcessor:
         number_of_tiles += factor_ratio_list.index(min(factor_ratio_list))
         # define division factors in x and y dimension
         if self.image_shape[3] > self.image_shape[2]:
-            # division_factors = factor_dict[number_of_tiles]
-            if self.image_shape[2] * 2 > self.image_shape[3]:
-                division_factors = (2, np.ceil(number_of_tiles/2).astype(int))
-            else:
-                division_factors = (1, number_of_tiles)
+            division_factors = factor_dict[number_of_tiles]
+            #if self.image_shape[2] * 2 > self.image_shape[3]:
+            #    division_factors = (2, np.ceil(number_of_tiles / 2).astype(int))
+            #else:
+            #    division_factors = (1, number_of_tiles)
 
         else:
-            # division_factors = factor_dict[number_of_tiles][::-1]
-            if self.image_shape[3] * 2 > self.image_shape[2]:
-                division_factors = (np.ceil(number_of_tiles/2).astype(int), 2)
-            else:
-                division_factors = (number_of_tiles, 1)
+            division_factors = factor_dict[number_of_tiles][::-1]
+            #if self.image_shape[3] * 2 > self.image_shape[2]:
+            #    division_factors = (np.ceil(number_of_tiles / 2).astype(int), 2)
+            #else:
+            #    division_factors = (number_of_tiles, 1)
         # add tile division factors to attributes
         self.tile_division_factors = division_factors
         # calculate tile size
@@ -175,56 +220,72 @@ class IMSProcessor:
         tiles_in_y_direction = division_factors[-2]
 
         # load image array
-        image_array = self.__read_image_array()
+        # image_array = self.__read_image_array()
         # reduce channels
-        image_array = select_channels(image_array, self.input_metadata, self.channels_of_interest_dict)
+        # image_array = select_channels(image_array, self.input_metadata, self.channels_of_interest_dict)
         # initialize tile id counter
         tile_id = 0
         # initialize tile information dict
         tile_info_dict = {}
-        # iterate tiles in y direction
-        for y_tile_idx in range(tiles_in_y_direction):
-            # define start index
-            y_start_idx = int(y_tile_idx * self.tile_size[0] - self.number_of_overlapping_pixels[0])
-            if y_start_idx < 0:
-                y_start_idx = 0
-            # define_stop_index
-            y_stop_idx = int((y_tile_idx+1) * self.tile_size[0] + self.number_of_overlapping_pixels[0])
-            if y_stop_idx > self.image_shape[2]:
-                y_stop_idx = self.image_shape[2]
 
-            # iterate tiles in x direction
-            for x_tile_idx in range(tiles_in_x_direction):
+        # open ims file
+        with h5py.File(self.path_to_input_data, 'r') as f:
+            # iterate tiles in y direction
+            for y_tile_idx in range(tiles_in_y_direction):
                 # define start index
-                x_start_idx = int(x_tile_idx * self.tile_size[1] - self.number_of_overlapping_pixels[1])
-                if x_start_idx < 0:
-                    x_start_idx = 0
+                y_start_idx = int(y_tile_idx * self.tile_size[0] - self.number_of_overlapping_pixels[0])
+                if y_start_idx < 0:
+                    y_start_idx = 0
                 # define_stop_index
-                x_stop_idx = int((x_tile_idx + 1) * self.tile_size[1] + self.number_of_overlapping_pixels[1])
-                if x_stop_idx > self.image_shape[3]:
-                    x_stop_idx = self.image_shape[3]
-                # load current tile
-                tile_array = image_array[:, :, y_start_idx:y_stop_idx, x_start_idx:x_stop_idx]
-                # status message
-                print(f"Process tile [{tile_id+1:2d}/{number_of_tiles:2d}]")
-                # save tile for inference as a nifti file
-                save_data_channels_for_inference(tile_array, self.input_metadata, self.path_to_cache_input, tile_id)
-                # update tile info dict
-                tile_info_dict[tile_id] = {"y_start_idx": y_start_idx,
-                                           "y_stop_idx": y_stop_idx,
-                                           "x_start_idx": x_start_idx,
-                                           "x_stop_idx": x_stop_idx}
-                # increment tile id
-                tile_id += 1
+                y_stop_idx = int((y_tile_idx + 1) * self.tile_size[0] + self.number_of_overlapping_pixels[0])
+                if y_stop_idx > self.image_shape[2]:
+                    y_stop_idx = self.image_shape[2]
+
+                # iterate tiles in x direction
+                for x_tile_idx in range(tiles_in_x_direction):
+                    # define start index
+                    x_start_idx = int(x_tile_idx * self.tile_size[1] - self.number_of_overlapping_pixels[1])
+                    if x_start_idx < 0:
+                        x_start_idx = 0
+                    # define_stop_index
+                    x_stop_idx = int((x_tile_idx + 1) * self.tile_size[1] + self.number_of_overlapping_pixels[1])
+                    if x_stop_idx > self.image_shape[3]:
+                        x_stop_idx = self.image_shape[3]
+
+                    # initialize tile array
+                    tile_array = np.zeros(
+                        (self.image_shape[0], self.image_shape[1], y_stop_idx - y_start_idx, x_stop_idx - x_start_idx),
+                        dtype=np.float32)
+
+                    # iterate channels of interest
+                    for ch_idx, channel_name in enumerate(self.channels_of_interest_dict.values()):
+                        # load current tile
+                        tile_array[:, ch_idx, :, :] = f['DataSet']['ResolutionLevel 0']['TimePoint 0'][
+                                                          self.channel_name_to_ims_identifier_dict[channel_name]][
+                                                          'Data'][:self.image_shape[0], y_start_idx:y_stop_idx, x_start_idx:x_stop_idx]
+                    # status message
+                    print(f"Process tile [{tile_id + 1:2d}/{number_of_tiles:2d}]")
+                    # save tile for inference as a nifti file
+                    save_data_channels_for_inference(tile_array, self.input_metadata, self.path_to_cache_input, tile_id)
+                    # update tile info dict
+                    tile_info_dict[tile_id] = {"y_start_idx": y_start_idx,
+                                               "y_stop_idx": y_stop_idx,
+                                               "x_start_idx": x_start_idx,
+                                               "x_stop_idx": x_stop_idx}
+                    # increment tile id
+                    tile_id += 1
         # add tile info dict to attributes
         self.tile_info_dict = tile_info_dict
 
     def stitch_segmentation_mask(self):
         # get nifti files with the processed segmentations
-        segmentation_nifti_file_list = sorted([os.path.join(self.path_to_cache_output, f) for f in os.listdir(self.path_to_cache_output) if f.endswith('.nii.gz')])
+        segmentation_nifti_file_list = sorted(
+            [os.path.join(self.path_to_cache_output, f) for f in os.listdir(self.path_to_cache_output) if
+             f.endswith('.nii.gz')])
 
         # create an array with ones of the size of the input image as basis for the stitched segmentation mask
-        stitched_segmentation_mask = np.ones((self.image_shape[0], self.image_shape[2], self.image_shape[3]), dtype=bool)
+        stitched_segmentation_mask = np.ones((self.image_shape[0], self.image_shape[2], self.image_shape[3]),
+                                             dtype=bool)
 
         # iterate segmentation mask files and load the data arrays
         for i, file_name in enumerate(segmentation_nifti_file_list):

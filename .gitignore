@@ -1,0 +1,15 @@
+# nifti files
+*.nii.gz
+*.nii
+# tiff files
+*.ome.tif
+*.tif
+# Ignore common cache directories
+.cache/
+**/cache/
+**/*.cache
+**/tmp/
+**/*.tmp
+# ignore pycharm file
+*.idea
+
