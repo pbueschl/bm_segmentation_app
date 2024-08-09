@@ -119,34 +119,9 @@ def inference(args, channels_of_interest):
     if not os.path.exists(path_to_output_cache):
         os.makedirs(path_to_output_cache)
 
-    # load ims file
-    input_data_array, metadata = ims_files.read_image_from_ims_file(args.input)
-    # ------------------------ write input data and channels of interest to cache ------------------------
-    # define path to cache file
-    path_to_cache_input_data_array = os.path.join(path_to_cache, "input_data_array.ome.tif")
-    # save resulting ome tiff file
-    tif.imwrite(path_to_cache_input_data_array,
-                input_data_array,
-                shape=input_data_array.shape,
-                imagej=True,
-                metadata=metadata)
-    shape_input_data = input_data_array.shape
-    del input_data_array
-    gc.collect()
-    # ---------------------------------------------------------------------------
-
-    # print status message
-    print(f'Select necessary channels...')
-    # define path to cache file
-    path_to_cache_coi = os.path.join(path_to_cache, "coi.ome.tif")
-    # select needed channels
-    utils.select_channels(path_to_cache_input_data_array,
-                          path_to_cache_coi,
-                          channels_of_interest)
-
     # instantiate image split processor
     max_pixels = 67 * 2 * 4000 * 3000
-    processor = image_spliter.IMSProcessor(path_to_cache_input_data_array,
+    processor = image_spliter.IMSProcessor(args.input,
                                            path_to_cache,
                                            max_pixels,
                                            channels_of_interest)
@@ -155,14 +130,6 @@ def inference(args, channels_of_interest):
 
     # print status message
     print(f'Run mask generation...')
-    '''
-    # get nnUNet results folder
-    path_to_nnunet_raw = os.environ['nnUNet_raw']
-    # get nnUNet results folder
-    path_to_nnunet_preprocessed = os.environ['nnUNet_preprocessed']
-    # get nnUNet results folder
-    path_to_nnunet_results = os.environ['nnUNet_results']
-    '''
 
     # get nnunet environment variables
     path_to_nnunet_raw, path_to_nnunet_preprocessed, path_to_nnunet_results = utils.get_nnunet_environment_variables()
@@ -191,38 +158,13 @@ def inference(args, channels_of_interest):
                                  save_probabilities=False, overwrite=False,
                                  num_processes_preprocessing=1, num_processes_segmentation_export=1,
                                  folder_with_segs_from_prev_stage=None, num_parts=1, part_id=0)
-    """
-    # get home folder
-    path_to_home_folder = os.environ['HOME']
-    inference_command, postprocessing_command = get_inference_command(args.dataset_id, path_to_input_cache,
-                                                                      path_to_output_cache, path_to_nnunet_results)
-    # construct command to run nnUNet_predict script
-    bash_command = f' export nnUNet_raw="{path_to_nnunet_raw}";\
-                           export nnUNet_preprocessed="{path_to_nnunet_preprocessed}";\
-                           export nnUNet_results="{path_to_nnunet_results}";\
-                            . {path_to_home_folder}/mambaforge-pypy3/bin/activate; \
-                            mamba activate segtool; \
-                            {inference_command}'  # ; \
-    #                        {postprocessing_command}'
-    print('Debug: ', bash_command)
-    # run inference
-    subprocess.run(bash_command, shell=True, check=True, executable='/bin/bash')
-    """
+
     gc.collect()
-    # initialize data_array
-    data_array = np.zeros((shape_input_data[0], 3, shape_input_data[2], shape_input_data[3]), dtype=np.uint8)
     # print status message
     print(f'Load generated mask...')
     # remove unnecessary variables from memory
     # stitch segmentation mask and load it
-    data_array[:, 2, :, :] = processor.stitch_segmentation_mask()
-    print("\n\nMax and min values of data_array: ",
-          np.max(data_array[:, 2:3, :, :]),
-          np.min(data_array[:, 2:3, :, :]),
-          "\nshape: ", data_array[:, 2:3, :, :].shape,
-          '\n\n')
-    # expand dimension of predicted mask array from ZYX to ZCYX
-    # predicted_mask_array = np.expand_dims(predicted_mask_array, axis=1).astype(np.uint8)
+    data_array = processor.stitch_segmentation_mask()
     # print status message
     print(f'Save resulting OME TIFF files at "{args.output}"...')
 
@@ -233,68 +175,8 @@ def inference(args, channels_of_interest):
     path_to_output_ome_tiff_file = os.path.join(args.output,
                                                 f'{os.path.splitext(os.path.basename(args.input))[0]}__{args.mask_selection}_mask.ome.tif')
     # save resulting ome tiff file
-    create_metadict_and_save_ome_tiff_file(data_array[:, 2:3, :, :], [mask_name], metadata, path_to_output_ome_tiff_file)
+    create_metadict_and_save_ome_tiff_file(data_array[:,np.newaxis], [mask_name], processor.input_metadata, path_to_output_ome_tiff_file)
 
-    '''
-    # ------------------------ save predicted mask together with used signal channels ------------------------
-    gc.collect()
-    # print status message
-    print("...load inference data from cache...")
-    # load channels of interest data array
-    with tif.TiffFile(path_to_cache_coi) as f:
-        # read image data array
-        data_array[:, :2, :, :] = f.asarray()
-        # read metadata
-        coi_metadata = f.imagej_metadata
-        # if channel_names are present in the metadata convert them to a list
-        if 'channel_names' in metadata:
-            coi_metadata['channel_names'] = eval(coi_metadata['channel_names'])
-    # data_array[:, :2, :, :], coi_metadata = image_io.read_ome_tiff_image_and_metadata(path_to_cache_coi)
-    print("...inference data loaded.")
-    # define channel names
-    channel_names = list(channels_of_interest.keys())
-    channel_names.append(mask_name)
-    coi_metadata['channel_names'] = channel_names
-    coi_metadata['channels'] = len(channel_names)
-    # concatenate image data with the generated mask
-    # inference_data_array = np.concatenate((inference_data_array, predicted_mask_array), axis=1)
-
-    # define path to output file
-    path_to_output_ome_tiff_file = os.path.join(args.output,
-                                                f'{os.path.splitext(os.path.basename(args.input))[0]}__{"__".join(channel_names)}.ome.tif')
-    # save resulting ome tiff file
-    create_metadict_and_save_ome_tiff_file(data_array, channel_names, coi_metadata,
-                                           path_to_output_ome_tiff_file)
-
-    
-    # ------------------------ save predicted mask together with all channels from input file ------------------------
-    del inference_data_array
-    gc.collect()
-    # print status message
-    print("...load original source data from cache...")
-    # load input data array
-    data_array, _ = image_io.read_ome_tiff_image_and_metadata(path_to_cache_input_data_array)
-    # delete cache directory and files:
-    # ToDo: shutil.rmtree(path_to_cache)
-    # remove deleted variable from memory
-    gc.collect()
-    # read list of channel names from metadata
-    channel_names = metadata['channel_names']
-    # convert channel names to list if it is not already of type list
-    if type(channel_names) is not list:
-        channel_names = eval(channel_names)
-    # define channel names
-    channel_names.append(mask_name)
-
-    # concatenate image data with the generated mask
-    data_array = np.concatenate((data_array, predicted_mask_array), axis=1)
-
-    # define path to output file
-    path_to_output_ome_tiff_file = os.path.join(args.output,
-                                                f'{os.path.splitext(os.path.basename(args.input))[0]}__all_channels.ome.tif')
-    # save resulting ome tiff file
-    create_metadict_and_save_ome_tiff_file(data_array, channel_names, metadata, path_to_output_ome_tiff_file)
-    '''
     shutil.rmtree(path_to_cache)
     # remove deleted variable from memory
     gc.collect()
