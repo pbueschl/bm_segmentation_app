@@ -13,7 +13,7 @@ def main():
     # define mask dataset dict, assigns each mask type a dataset
     mask_dataset_id_dict = {
         'vessels': 7,
-        'tissue': 155
+        'tissue': 160
     }
     # create the parser object
     parser = GooeyParser(
@@ -47,9 +47,10 @@ def main():
         }
     if args.mask_selection == 'tissue':
         channels_of_interest = {
-            'dapi': channels_of_interest['dapi']
+            'dapi': channels_of_interest['dapi'],
+            args.channel_selection: channels_of_interest[args.channel_selection],
         }
-        args.nnunet_folds = (0,)
+        args.nnunet_folds = (0, 1)
     # call inference function to generate desired mask
     inference(args, channels_of_interest)
 
