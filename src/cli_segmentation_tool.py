@@ -1,6 +1,7 @@
 import argparse
 from utils.inference_new import inference
 import pathlib
+import time
 
 def main():
     # define needed channels
@@ -55,4 +56,8 @@ def main():
 
 
 if __name__ == "__main__":
+    start_time = time.time()
     main()
+    # Get execution time in hours minutes and seconds
+    time_str = time.strftime("%H:%M:%S", time.gmtime(time.time() - start_time))
+    print(f"Total execution time: {time_str}")

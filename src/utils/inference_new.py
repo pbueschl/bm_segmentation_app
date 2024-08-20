@@ -5,6 +5,7 @@ import nibabel as nib
 import sys
 import shutil
 import gc
+import time
 
 sys.path.append('..')
 from utils import ims_files, utils, image_io, image_spliter
@@ -107,13 +108,13 @@ def inference(args, channels_of_interest):
         os.mkdir(args.output)
 
     # create cache directory for saving files needed for running inference
-    path_to_cache = 'cache'
+    path_to_cache = f'cache_{time.strftime("%Y%m%d_%H%M%S")}'
 
     if os.path.exists(path_to_cache):
         shutil.rmtree(path_to_cache)
     os.makedirs(path_to_cache)
-    path_to_input_cache = 'cache/input'
-    path_to_output_cache = 'cache/output'
+    path_to_input_cache = os.path.join(path_to_cache,'input')
+    path_to_output_cache = os.path.join(path_to_cache,'output')
     if not os.path.exists(path_to_input_cache):
         os.makedirs(path_to_input_cache)
     if not os.path.exists(path_to_output_cache):
