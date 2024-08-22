@@ -50,11 +50,11 @@ def main():
                 sys.argv = ['segtool.main'] + arguments
                 # Call the function
                 segtool.main()
-            except ValueError as e:
+            except (TypeError, ValueError) as e:
                 # create a txt file that with the name 'failed__{mask type}_mask_{ims file name without suffix}.txt'
                 # and save it to the output directory
                 with open(os.path.join(args.output, f'failed__{mask_type}_mask_{f[:-4]}.txt'), 'w') as file:
-                    file.write(f'Failed to create {mask_type} mask for file' + os.path.join(args.input, f))
+                    file.write(f'Failed to create {mask_type} mask for file:\n   ' + os.path.join(args.input, f) + '\n\nCached exception: \n' + str(e))
             finally:
                 # Restore the original sys.argv
                 sys.argv = original_argv
