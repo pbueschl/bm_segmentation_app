@@ -6,8 +6,8 @@ import time
 def main():
     # define needed channels
     channels_of_interest = {
-        'dapi': ['dapi'],
-        'endomucin': ['endomucin'],
+        'dapi': ['dapi', 'DAPI', 'Dapi'],
+        'endomucin': ['endomucin', 'ENDOMUCIN', 'Endomucin'],
         'endoglin': ['endoglin', 'endoglin_bad']
     }
     # define mask dataset dict, assigns each mask type a dataset
