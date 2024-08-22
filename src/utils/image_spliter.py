@@ -125,6 +125,12 @@ class IMSProcessor:
                         # replace list of possible name variants with used name
                         self.channels_of_interest_dict[k] = ch_name_temp
 
+            # check if one of the channels of interest dictionary's values still holds a list of possible name variants
+            for k, v in self.channels_of_interest_dict.items():
+                if isinstance(v, list):
+                    raise TypeError(f'''The channel "{k}" seems to be absent in the passed ims data file. 
+                                        Please re-check the ims file for the missing or misspelled channel (valid name variants are: "{', '.join(v)}").''')
+
             # initialize empty dict for voxel and image sizes
             voxel_size = {}
             image_size = {}
