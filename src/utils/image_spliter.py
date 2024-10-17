@@ -3,6 +3,7 @@ import h5py
 import tifffile as tif
 import os
 import nibabel as nib
+from multiprocessing import Pool, cpu_count
 
 
 def write_nnUNet_training_nifti_files(path_output_directory, data_array, resolution, image_nr, channel_nr, case_id):
@@ -75,7 +76,7 @@ def select_channels(data_array, metadata, channels_of_interest_dict):
 
 
 class IMSProcessor:
-    def __init__(self, path_to_input_ims_file, path_to_cache, max_pixels, channels_of_interest_dict, overlap=0.1):
+    def __init__(self, path_to_input_ims_file, path_to_cache, max_pixels, channels_of_interest_dict, overlap=0.1, num_workers=8):
         self.tile_info_dict = None
         self.number_of_overlapping_pixels = None
         self.tile_division_factors = None
@@ -89,7 +90,9 @@ class IMSProcessor:
         self.read_metadata_from_ims_file()
         self.max_pixels = max_pixels
         self.overlap = overlap
+        self.num_tiles = 0
         self.number_of_tiles = 1
+        self.num_workers = num_workers
         self.image_shape = (self.input_metadata["image_size"]['Z'],
                             len(channels_of_interest_dict),
                             self.input_metadata["image_size"]['Y'],
@@ -233,55 +236,65 @@ class IMSProcessor:
         tile_id = 0
         # initialize tile information dict
         tile_info_dict = {}
+        # Initialize task list for multiprocessing
+        tasks = []
+        # iterate tiles in y direction
+        for y_tile_idx in range(tiles_in_y_direction):
+            # define start index
+            y_start_idx = max(int(y_tile_idx * self.tile_size[0] - self.number_of_overlapping_pixels[0]), 0)
+            # define_stop_index
+            y_stop_idx = min(int((y_tile_idx + 1) * self.tile_size[0] + self.number_of_overlapping_pixels[0]),
+                             self.image_shape[2])
 
-        # open ims file
-        with h5py.File(self.path_to_input_data, 'r') as f:
-            # iterate tiles in y direction
-            for y_tile_idx in range(tiles_in_y_direction):
+            # iterate tiles in x direction
+            for x_tile_idx in range(tiles_in_x_direction):
                 # define start index
-                y_start_idx = int(y_tile_idx * self.tile_size[0] - self.number_of_overlapping_pixels[0])
-                if y_start_idx < 0:
-                    y_start_idx = 0
+                x_start_idx = max(int(x_tile_idx * self.tile_size[1] - self.number_of_overlapping_pixels[1]), 0)
                 # define_stop_index
-                y_stop_idx = int((y_tile_idx + 1) * self.tile_size[0] + self.number_of_overlapping_pixels[0])
-                if y_stop_idx > self.image_shape[2]:
-                    y_stop_idx = self.image_shape[2]
+                x_stop_idx = min(int((x_tile_idx + 1) * self.tile_size[1] + self.number_of_overlapping_pixels[1]),
+                                 self.image_shape[3])
 
-                # iterate tiles in x direction
-                for x_tile_idx in range(tiles_in_x_direction):
-                    # define start index
-                    x_start_idx = int(x_tile_idx * self.tile_size[1] - self.number_of_overlapping_pixels[1])
-                    if x_start_idx < 0:
-                        x_start_idx = 0
-                    # define_stop_index
-                    x_stop_idx = int((x_tile_idx + 1) * self.tile_size[1] + self.number_of_overlapping_pixels[1])
-                    if x_stop_idx > self.image_shape[3]:
-                        x_stop_idx = self.image_shape[3]
+                # update tile info dict
+                tile_info_dict[tile_id] = {"y_start_idx": y_start_idx,
+                                           "y_stop_idx": y_stop_idx,
+                                           "x_start_idx": x_start_idx,
+                                           "x_stop_idx": x_stop_idx}
+                # Add the task to the list
+                tasks.append((y_start_idx, y_stop_idx, x_start_idx, x_stop_idx, tile_id, number_of_tiles))
 
-                    # initialize tile array
-                    tile_array = np.zeros(
-                        (self.image_shape[0], self.image_shape[1], y_stop_idx - y_start_idx, x_stop_idx - x_start_idx),
-                        dtype=np.float32)
-
-                    # iterate channels of interest
-                    for ch_idx, channel_name in enumerate(self.channels_of_interest_dict.values()):
-                        # load current tile
-                        tile_array[:, ch_idx, :, :] = f['DataSet']['ResolutionLevel 0']['TimePoint 0'][
-                                                          self.channel_name_to_ims_identifier_dict[channel_name]][
-                                                          'Data'][:self.image_shape[0], y_start_idx:y_stop_idx, x_start_idx:x_stop_idx]
-                    # status message
-                    print(f"Process tile [{tile_id + 1:2d}/{number_of_tiles:2d}]")
-                    # save tile for inference as a nifti file
-                    save_data_channels_for_inference(tile_array, self.input_metadata, self.path_to_cache_input, tile_id)
-                    # update tile info dict
-                    tile_info_dict[tile_id] = {"y_start_idx": y_start_idx,
-                                               "y_stop_idx": y_stop_idx,
-                                               "x_start_idx": x_start_idx,
-                                               "x_stop_idx": x_stop_idx}
-                    # increment tile id
-                    tile_id += 1
+                # increment tile id
+                tile_id += 1
+        # Use multiprocessing to process tiles in parallel
+        print('Number of workers: ', self.num_workers)
+        with Pool(processes=min(self.num_workers, len(tasks))) as pool:
+            pool.starmap(self.process_tile, tasks)
         # add tile info dict to attributes
         self.tile_info_dict = tile_info_dict
+        self.num_tiles = len(tasks)
+
+    def process_tile(self, y_start_idx, y_stop_idx, x_start_idx, x_stop_idx, tile_id, number_of_tiles):
+        """
+        Function to process and save a tile. To be used with multiprocessing.
+        """
+        # Status message
+        print(f"Start processing of tile [{tile_id + 1:2d}/{number_of_tiles:2d}] ...")
+        # Open the ims file within the worker process
+        with h5py.File(self.path_to_input_data, 'r') as f:
+            tile_array = np.zeros(
+                (self.image_shape[0], self.image_shape[1], y_stop_idx - y_start_idx, x_stop_idx - x_start_idx),
+                dtype=np.float32
+            )
+
+            # Iterate channels of interest
+            for ch_idx, channel_name in enumerate(self.channels_of_interest_dict.values()):
+                tile_array[:, ch_idx, :, :] = f['DataSet']['ResolutionLevel 0']['TimePoint 0'][
+                                                  self.channel_name_to_ims_identifier_dict[channel_name]]['Data'][
+                                              :self.image_shape[0], y_start_idx:y_stop_idx, x_start_idx:x_stop_idx]
+
+        # Save tile for inference as a nifti file
+        save_data_channels_for_inference(tile_array, self.input_metadata, self.path_to_cache_input, tile_id)
+        # Status message
+        print(f"... finished processing of tile [{tile_id + 1:2d}/{number_of_tiles:2d}].")
 
     def stitch_segmentation_mask(self):
         # get nifti files with the processed segmentations
