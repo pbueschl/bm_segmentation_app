@@ -1,7 +1,9 @@
 import argparse
 from utils.inference_new import inference
+from utils.utils import get_used_nnunet_folds_configuration_and_plan
 import pathlib
 import time
+
 
 def main():
     # define needed channels
@@ -12,8 +14,9 @@ def main():
     }
     # define mask dataset dict, assigns each mask type a dataset
     mask_dataset_id_dict = {
-        'vessels': 7,
-        'tissue': 160
+        'vessels': 8,
+        'tissue': 160,
+        'dilated_vessels': 400
     }
     # create the parser object
     parser = argparse.ArgumentParser(
@@ -30,14 +33,22 @@ def main():
                         help='Select the desired mask that should be generated.')
     parser.add_argument('-c', '--channel_selection',
                         help='Select the desired channel of vessel staining that should be used in addition to the DAPI channel.')
+    parser.add_argument('-g', '--gpu_id', type=int, default=0,
+                        help='Select the GPU ID for inference.')
+    parser.add_argument('-np', '--n_processes_preprocessing', type=int, default=2,
+                        help='Define number of processes used for preprocessing.')
+    parser.add_argument('-ns', '--n_processes_saving', type=int, default=2,
+                        help='Define number of processes used for saving output files.')
+    parser.add_argument('-ni', '--n_processes_patching', type=int, default=16,
+                        help='Define number of processes used for patching the image.')
     # parse the arguments
     args = parser.parse_args()
-    # define the nnUNet configuration
-    args.nnunet_config = '3d_lowres'
-    # define the nnUnet folds
-    args.nnunet_folds = (0, 1, 2, 3, 4)
+
     # transform the selected mask to the according dataset id
     args.dataset_id = mask_dataset_id_dict[args.mask_selection]
+    # get folds, configuration and trainer
+    args.nnunet_folds, args.nnunet_config, args.nnunet_plans = get_used_nnunet_folds_configuration_and_plan(args.dataset_id)
+
     # modify channels_of_interest dict
     if args.mask_selection == 'vessels':
         channels_of_interest = {
@@ -49,10 +60,15 @@ def main():
             'dapi': channels_of_interest['dapi'],
             args.channel_selection: channels_of_interest[args.channel_selection],
         }
-        args.nnunet_folds = (0, 1)
+
+    if args.mask_selection == 'dilated_vessels':
+        channels_of_interest = {
+            'dapi': channels_of_interest['dapi'],
+            args.channel_selection: channels_of_interest[args.channel_selection],
+        }
 
     # call inference function to generate desired mask
-    inference(args, channels_of_interest)
+    inference(args, channels_of_interest, gpu_id=args.gpu_id)
 
 
 if __name__ == "__main__":

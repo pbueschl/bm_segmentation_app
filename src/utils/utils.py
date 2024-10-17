@@ -5,7 +5,11 @@ import nibabel as nib
 import tifffile as tif
 from utils.nnUNet_nifti_files import write_nnUNet_training_nifti_files
 from utils import image_io
+import re
 import gc
+import datetime
+from pathlib import Path
+
 
 channels_of_interest = {
     'dapi': ['dapi'],
@@ -74,6 +78,48 @@ def select_channels(path_to_input_tif_file, path_to_coi_output, channels_of_inte
 
     del data_array
     gc.collect()
+
+
+def get_used_nnunet_folds_configuration_and_plan(dataset_id):
+    """
+    This function returns the used folds and configuration for the given dataset_id
+    :param dataset_id: id of the dataset (str)
+    :return: used_folds (list of str), configuration (str)
+    """
+    # get path to nnunet environment variables
+    _, _, nnunet_results_path = get_nnunet_environment_variables()
+    # get full name of dataset with passed id
+    dataset_full_name = [ds_name for ds_name in os.listdir(nnunet_results_path) if ds_name.startswith(f'Dataset{dataset_id:03}')]
+    # if no matching dataset found raise an error
+    if len(dataset_full_name) == 0:
+        raise ValueError(f'No matching Dataset found!')
+    # if multiple datasets with the passed id exist, raise error too
+    if len(dataset_full_name) > 1:
+        raise ValueError(f'Multiple matching datasets found! List of available datasets: \n'
+                             f'{os.listdir(nnunet_results_path)}')
+
+    # get string of dataset full name
+    dataset_full_name = dataset_full_name[0]
+
+    # open inference instructions txt file of the dataset folder and read out the configuration, folds and nnUNet
+    # training plan
+    with open(os.path.join(nnunet_results_path, dataset_full_name, 'inference_instructions.txt'), 'r') as f:
+        file_content = f.read()
+
+    # Regular expression to match the desired flags and their values in nnUNetv2_predict command
+    pattern = r"nnUNetv2_predict.*?-f\s+([0-9\s]+).*?-c\s+(\S+).*?-p\s+(\S+)"
+    # Search for matches
+    matches = re.search(pattern, file_content, re.DOTALL)
+    if matches:
+        f_values = matches.group(1).split()
+        f_values = list(map(int, f_values))
+        c_value = matches.group(2)
+        p_value = matches.group(3)
+        return f_values, c_value, p_value
+    else:
+        # raise error that desired values could not be determined
+        raise ValueError(f'The desired values for folds, configuration and nnUNet plan could not be determined in the '
+                             f'inference_instructions.txt file of the dataset {dataset_full_name}')
 
 
 def unify_channels(image_data_array, metadata_dict, channels_dict=channels_of_interest,
@@ -148,6 +194,7 @@ def unify_channels(image_data_array, metadata_dict, channels_dict=channels_of_in
     # return metadata dict and image data array
     return image_data_array, metadata_dict
 
+
 def write_nifti_file(output_nifti_file_path, data_array, resolution):
     """
     Saves data array together with the resolution as an affine matrix in a nifti file
@@ -216,3 +263,42 @@ def get_nnunet_environment_variables():
 
     # return environment variables
     return raw, preprocessed, results
+
+
+def remove_old_cache_dirs(base_path, older_than):
+    # Parse the time string
+    days, hours = 0, 0
+    if isinstance(older_than, int):
+        days = older_than
+    elif older_than.isdigit():
+        days = int(older_than)
+    else:
+        match = re.findall(r'(\d+)([dh])', older_than)
+        for value, unit in match:
+            if unit == 'd':
+                days += int(value)
+            elif unit == 'h':
+                hours += int(value)
+
+    # Calculate the time threshold
+    delta = datetime.timedelta(hours=hours, days=days)
+    threshold_time = datetime.datetime.now() - delta
+
+    # Regex pattern to match cache folder names like 'cache_YYYYMMDD_HHMMSS'
+    pattern = re.compile(r"cache_(\d{8})_(\d{6})")
+
+    # Iterate over each item in the base directory
+    for item in Path(base_path).iterdir():
+        if item.is_dir():
+            match = pattern.match(item.name)
+            if match:
+                # Extract date and time from folder name
+                date_str, time_str = match.groups()
+                folder_time = datetime.datetime.strptime(date_str + time_str, "%Y%m%d%H%M%S")
+
+                # Check if the folder is older than the threshold
+                if folder_time < threshold_time:
+                    # Remove the directory
+                    print(f"Removing old cache directory: {item}")
+                    # Uncomment the following line to actually delete the directory
+                    os.rmdir(item)

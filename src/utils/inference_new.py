@@ -6,11 +6,10 @@ import sys
 import shutil
 import gc
 import time
-
+from utils.utils import remove_old_cache_dirs
 sys.path.append('..')
 from utils import ims_files, utils, image_io, image_spliter
 import subprocess
-
 import torch
 from batchgenerators.utilities.file_and_folder_operations import join
 from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
@@ -95,9 +94,10 @@ def check_ram_usage(all_variables):
             print(f"EXCEPTION for variable: {name} ")
 
 
-def inference(args, channels_of_interest):
+def inference(args, channels_of_interest, gpu_id=0):
     """
 
+    :param gpu_id:
     :param args:
     :param channels_of_interest:
     :return:
@@ -107,6 +107,8 @@ def inference(args, channels_of_interest):
     if not os.path.exists(args.output):
         os.mkdir(args.output)
 
+    # remove cache directories that are older than 2 days
+    remove_old_cache_dirs(os.getcwd(), '2d')
     # create cache directory for saving files needed for running inference
     path_to_cache = f'cache_{time.strftime("%Y%m%d_%H%M%S")}'
 
@@ -121,11 +123,12 @@ def inference(args, channels_of_interest):
         os.makedirs(path_to_output_cache)
 
     # instantiate image split processor
-    max_pixels = 67 * 2 * 4000 * 3000
+    max_pixels = 67 * 2 * 4000 * 4000
     processor = image_spliter.IMSProcessor(args.input,
                                            path_to_cache,
                                            max_pixels,
-                                           channels_of_interest)
+                                           channels_of_interest,
+                                           num_workers=args.n_processes_patching)
     # split image into chunks
     processor.split_image()
 
@@ -142,14 +145,14 @@ def inference(args, channels_of_interest):
         tile_step_size=0.5,
         use_gaussian=True,
         use_mirroring=True,
-        device=torch.device('cuda', 0),
+        device=torch.device('cuda', gpu_id),
         verbose=False,
         verbose_preprocessing=False,
         allow_tqdm=True
     )
     # initializes the network architecture, loads the checkpoint
     predictor.initialize_from_trained_model_folder(
-        join(path_to_nnunet_results, full_dataset_name, f'nnUNetTrainer__nnUNetPlans__{args.nnunet_config}'),
+        join(path_to_nnunet_results, full_dataset_name, f'nnUNetTrainer__{args.nnunet_plans}__{args.nnunet_config}'),
         use_folds=args.nnunet_folds,
         checkpoint_name='checkpoint_final.pth',
     )
@@ -157,7 +160,8 @@ def inference(args, channels_of_interest):
     predictor.predict_from_files(join(path_to_input_cache),
                                  join(path_to_output_cache),
                                  save_probabilities=False, overwrite=False,
-                                 num_processes_preprocessing=1, num_processes_segmentation_export=1,
+                                 num_processes_preprocessing=args.n_processes_preprocessing,
+                                 num_processes_segmentation_export=args.n_processes_saving,
                                  folder_with_segs_from_prev_stage=None, num_parts=1, part_id=0)
 
     gc.collect()
@@ -177,7 +181,7 @@ def inference(args, channels_of_interest):
                                                 f'{os.path.splitext(os.path.basename(args.input))[0]}__{args.mask_selection}_mask.ome.tif')
     # save resulting ome tiff file
     create_metadict_and_save_ome_tiff_file(data_array[:,np.newaxis], [mask_name], processor.input_metadata, path_to_output_ome_tiff_file)
-
+    # remove cache directory
     shutil.rmtree(path_to_cache)
     # remove deleted variable from memory
     gc.collect()
