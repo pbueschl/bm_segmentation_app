@@ -35,9 +35,9 @@ def main():
                         help='Select the desired channel of vessel staining that should be used in addition to the DAPI channel.')
     parser.add_argument('-g', '--gpu_id', type=int, default=0,
                         help='Select the GPU ID for inference.')
-    parser.add_argument('-np', '--n_processes_preprocessing', type=int, default=2,
+    parser.add_argument('-np', '--n_processes_preprocessing', type=int, default=1,
                         help='Define number of processes used for preprocessing.')
-    parser.add_argument('-ns', '--n_processes_saving', type=int, default=2,
+    parser.add_argument('-ns', '--n_processes_saving', type=int, default=1,
                         help='Define number of processes used for saving output files.')
     parser.add_argument('-ni', '--n_processes_patching', type=int, default=16,
                         help='Define number of processes used for patching the image.')

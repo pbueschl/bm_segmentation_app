@@ -123,7 +123,7 @@ def inference(args, channels_of_interest, gpu_id=0):
         os.makedirs(path_to_output_cache)
 
     # instantiate image split processor
-    max_pixels = 67 * 2 * 4000 * 4000
+    max_pixels = 67 * 2 * 3000 * 4000
     processor = image_spliter.IMSProcessor(args.input,
                                            path_to_cache,
                                            max_pixels,
