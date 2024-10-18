@@ -9,7 +9,7 @@ import re
 import gc
 import datetime
 from pathlib import Path
-
+import shutil
 
 channels_of_interest = {
     'dapi': ['dapi'],
@@ -301,4 +301,4 @@ def remove_old_cache_dirs(base_path, older_than):
                     # Remove the directory
                     print(f"Removing old cache directory: {item}")
                     # Uncomment the following line to actually delete the directory
-                    os.rmdir(item)
+                    shutil.rmtree(item)
