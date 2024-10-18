@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version = 1.0
+Type =		Application
+Encoding=UTF-8
+Name =		Segmentation Tool
+Comment =	Tool for generating vessel and tissue masks. 
+#	Ikon liegt im Ordner ~/.icons/
+Icon=/home/clab_member/projects/bm_segmentation_app/utils/icons/gooey_icons/program_icon.png
+Terminal =	true
+Exec =		bash -c 'source /home/clab_member/mambaforge-pypy3/etc/profile.d/mamba.sh; mamba activate /home/clab_member/mambaforge-pypy3/envs/segtool; /home/clab_member/mambaforge-pypy3/envs/segtool/bin/python /home/clab_member/projects/bm_segmentation_app/src/gui_segmentation_app.py'
+StartupNotify =	false
+Categories=LabTools;
