@@ -18,7 +18,7 @@ def main():
     }
     # define mask dataset dict, assigns each mask type a dataset
     mask_dataset_id_dict = {
-        'vessels': 7,
+        'vessels': 8,
         'tissue': 160,
         'dilated_vessels': 400
     }
