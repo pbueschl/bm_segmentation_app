@@ -90,7 +90,6 @@ class IMSProcessor:
         self.read_metadata_from_ims_file()
         self.max_pixels = max_pixels
         self.overlap = overlap
-        self.num_tiles = 0
         self.number_of_tiles = 1
         self.num_workers = num_workers
         self.image_shape = (self.input_metadata["image_size"]['Z'],
@@ -270,7 +269,6 @@ class IMSProcessor:
             pool.starmap(self.process_tile, tasks)
         # add tile info dict to attributes
         self.tile_info_dict = tile_info_dict
-        self.num_tiles = len(tasks)
 
     def process_tile(self, y_start_idx, y_stop_idx, x_start_idx, x_stop_idx, tile_id, number_of_tiles):
         """
