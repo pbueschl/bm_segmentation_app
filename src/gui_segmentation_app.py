@@ -1,19 +1,26 @@
 from utils.inference_new import inference
+from utils.utils import get_used_nnunet_folds_configuration_and_plan
 from gooey import Gooey, GooeyParser
+import time
+import os
 
 
-@Gooey(advanced=True, image_dir='/home/clab_member/projects/bm_segmentation_app/utils/icons/gooey_icons')
+@Gooey(advanced=True,
+       image_dir=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'utils', 'icons',
+                              'gooey_icons')
+       )
 def main():
     # define needed channels
     channels_of_interest = {
-        'dapi': ['dapi'],
-        'endomucin': ['endomucin'],
+        'dapi': ['dapi', 'DAPI', 'Dapi'],
+        'endomucin': ['endomucin', 'ENDOMUCIN', 'Endomucin'],
         'endoglin': ['endoglin', 'endoglin_bad']
     }
     # define mask dataset dict, assigns each mask type a dataset
     mask_dataset_id_dict = {
         'vessels': 7,
-        'tissue': 160
+        'tissue': 160,
+        'dilated_vessels': 400
     }
     # create the parser object
     parser = GooeyParser(
@@ -25,7 +32,8 @@ def main():
                         help='Path to input ims file')
     parser.add_argument('-o', '--output', required=True, widget='DirChooser',
                         help='Directory for storing the OME TIFF file with image and mask data')
-    parser.add_argument('-m', '--mask_selection', required=True, choices=['vessels', 'tissue'], widget="Dropdown",
+    parser.add_argument('-m', '--mask_selection', required=True, choices=list(mask_dataset_id_dict.keys()),
+                        widget="Dropdown",
                         default='vessels',
                         help='Select the desired mask that should be generated.')
     parser.add_argument('-c', '--channel_selection', required=True, choices=list(channels_of_interest.keys())[1:],
@@ -33,12 +41,19 @@ def main():
                         help='Select the desired channel of vessel staining that should be used in addition to the DAPI channel.')
     # parse the arguments
     args = parser.parse_args()
-    # define the nnUNet configuration
-    args.nnunet_config = '3d_lowres'
-    # define the nnUnet folds
-    args.nnunet_folds = (0, 1, 2, 3, 4)
+    # set gpu id
+    args.gpu_id = 0
+    # set number of precesses used for preprocessing, saving and patching
+    args.n_processes_preprocessing = 1
+    args.n_processes_saving = 1
+    args.n_processes_patching = 8
+
     # transform the selected mask to the according dataset id
     args.dataset_id = mask_dataset_id_dict[args.mask_selection]
+    # get folds, configuration and trainer
+    args.nnunet_folds, args.nnunet_config, args.nnunet_plans = get_used_nnunet_folds_configuration_and_plan(
+        args.dataset_id)
+
     # modify channels_of_interest dict
     if args.mask_selection == 'vessels':
         channels_of_interest = {
@@ -50,10 +65,20 @@ def main():
             'dapi': channels_of_interest['dapi'],
             args.channel_selection: channels_of_interest[args.channel_selection],
         }
-        args.nnunet_folds = (0, 1)
+
+    if args.mask_selection == 'dilated_vessels':
+        channels_of_interest = {
+            'dapi': channels_of_interest['dapi'],
+            args.channel_selection: channels_of_interest[args.channel_selection],
+        }
+
     # call inference function to generate desired mask
-    inference(args, channels_of_interest)
+    inference(args, channels_of_interest, gpu_id=args.gpu_id)
 
 
 if __name__ == "__main__":
+    start_time = time.time()
     main()
+    # Get execution time in hours minutes and seconds
+    time_str = time.strftime("%H:%M:%S", time.gmtime(time.time() - start_time))
+    print(f"Total execution time: {time_str}")
