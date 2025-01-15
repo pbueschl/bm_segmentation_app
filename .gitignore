@@ -12,4 +12,5 @@
 **/*.tmp
 # ignore pycharm file
 *.idea
-
+# ignore temp
+**/temp/
