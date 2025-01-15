@@ -1,4 +1,4 @@
-from utils.inference_new import inference
+from utils.inference import inference
 from utils.utils import get_used_nnunet_folds_configuration_and_plan
 from gooey import Gooey, GooeyParser
 import time
