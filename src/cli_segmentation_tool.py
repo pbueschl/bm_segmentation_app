@@ -16,7 +16,8 @@ def main():
     mask_dataset_id_dict = {
         'vessels': 8,
         'tissue': 160,
-        'dilated_vessels': 400
+        'dilated_vessels': 400,
+        'dilated_tissue': 71
     }
     # create the parser object
     parser = argparse.ArgumentParser(
