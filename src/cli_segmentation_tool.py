@@ -41,6 +41,9 @@ def main():
                         help='Define number of processes used for saving output files.')
     parser.add_argument('-ni', '--n_processes_patching', type=int, default=16,
                         help='Define number of processes used for patching the image.')
+    # add arguments for a tile scaling factor
+    parser.add_argument('-ts', '--tile_scaling_factor', type=float, default=0.5,
+                        help='Define the tile scaling factor.')
     # parse the arguments
     args = parser.parse_args()
 
@@ -68,7 +71,7 @@ def main():
         }
 
     # call inference function to generate desired mask
-    inference(args, channels_of_interest, gpu_id=args.gpu_id)
+    inference(args, channels_of_interest, gpu_id=args.gpu_id, tile_scaling_factor=args.tile_scaling_factor)
 
 
 if __name__ == "__main__":

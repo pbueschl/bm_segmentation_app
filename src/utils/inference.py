@@ -94,7 +94,7 @@ def check_ram_usage(all_variables):
             print(f"EXCEPTION for variable: {name} ")
 
 
-def inference(args, channels_of_interest, gpu_id=0):
+def inference(args, channels_of_interest, gpu_id=0, tile_scaling_factor=None):
     """
 
     :param gpu_id:
@@ -124,6 +124,9 @@ def inference(args, channels_of_interest, gpu_id=0):
 
     # instantiate image split processor
     max_pixels = 67 * 2 * 3000 * 4000
+    if tile_scaling_factor:
+        max_pixels = int(tile_scaling_factor * max_pixels)
+
     processor = image_spliter.IMSProcessor(args.input,
                                            path_to_cache,
                                            max_pixels,

@@ -10,6 +10,9 @@ import os
                               'gooey_icons')
        )
 def main():
+    # define patch size reduction factor
+    patch_size_reduction_factor = 0.25
+
     # define needed channels
     channels_of_interest = {
         'dapi': ['dapi', 'DAPI', 'Dapi'],
@@ -39,6 +42,12 @@ def main():
     parser.add_argument('-c', '--channel_selection', required=True, choices=list(channels_of_interest.keys())[1:],
                         widget="Dropdown",
                         help='Select the desired channel of vessel staining that should be used in addition to the DAPI channel.')
+    parser.add_argument(
+        '--reduce_patch_size',  # Name of the argument
+        action='store_const',  # Special action to store a constant value
+        const=patch_size_reduction_factor,  # Value to store when the checkbox is checked
+        default=None,  # Value when the checkbox is unchecked
+        help=f'Reduce patch size by factor {int(1/patch_size_reduction_factor)}')
     # parse the arguments
     args = parser.parse_args()
     # set gpu id
@@ -73,7 +82,7 @@ def main():
         }
 
     # call inference function to generate desired mask
-    inference(args, channels_of_interest, gpu_id=args.gpu_id)
+    inference(args, channels_of_interest, gpu_id=args.gpu_id, tile_scaling_factor=args.reduce_patch_size)
 
 
 if __name__ == "__main__":
