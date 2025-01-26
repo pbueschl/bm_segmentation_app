@@ -11,8 +11,10 @@ sys.path.append('..')
 from utils import ims_files, utils, image_io, image_spliter
 import subprocess
 import torch
-from batchgenerators.utilities.file_and_folder_operations import join
+from batchgenerators.utilities.file_and_folder_operations import join, load_pickle
 from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
+from nnunetv2.ensembling.ensemble import ensemble_folders
+from nnunetv2.postprocessing.remove_connected_components import apply_postprocessing_to_folder
 
 
 def get_full_dataset_name(dataset_id, path_to_nnunet_results):
@@ -153,26 +155,83 @@ def inference(args, channels_of_interest, gpu_id=0, tile_scaling_factor=None):
         verbose_preprocessing=False,
         allow_tqdm=True
     )
-    # initializes the network architecture, loads the checkpoint
-    predictor.initialize_from_trained_model_folder(
-        join(path_to_nnunet_results, full_dataset_name, f'nnUNetTrainer__{args.nnunet_plans}__{args.nnunet_config}'),
-        use_folds=args.nnunet_folds,
-        checkpoint_name='checkpoint_final.pth',
-    )
-    # variant 1: give input and output folders
-    predictor.predict_from_files(join(path_to_input_cache),
-                                 join(path_to_output_cache),
-                                 save_probabilities=False, overwrite=False,
-                                 num_processes_preprocessing=args.n_processes_preprocessing,
-                                 num_processes_segmentation_export=args.n_processes_saving,
-                                 folder_with_segs_from_prev_stage=None, num_parts=1, part_id=0)
+    # get inference parameters
+    predictor_parameters_list = args.inference_inst_dict['predict_param_list']
+    ensemble_flag = args.inference_inst_dict['ensemble_flag']
+    postprocessing_param_dict = args.inference_inst_dict['postprocessing_dict']
+
+    # initialize list of prediction output caches
+    prediction_output_caches = []
+
+    # iterate predictor parameter list
+    for i, pred_parm_dict in enumerate(predictor_parameters_list):
+        # status message
+        print(f'\nRun inference for model {pred_parm_dict["config"]} [{i+1}/{len(predictor_parameters_list)}]...\n')
+        # create output folder in cache for model i
+        pred_cache_folder = os.path.join(path_to_cache, f'pred_{i}')
+        if not os.path.exists(pred_cache_folder):
+            os.makedirs(pred_cache_folder)
+        prediction_output_caches.append(pred_cache_folder)
+
+        # initializes the network architecture, loads the checkpoint
+        predictor.initialize_from_trained_model_folder(
+            join(path_to_nnunet_results, full_dataset_name, f'nnUNetTrainer__{pred_parm_dict["plan"]}__{pred_parm_dict["config"]}'),
+            use_folds=pred_parm_dict['folds'],
+            checkpoint_name='checkpoint_final.pth',
+        )
+
+        # variant 1: give input and output folders
+        predictor.predict_from_files(join(path_to_input_cache),
+                                     join(pred_cache_folder),
+                                     save_probabilities=False, overwrite=False,
+                                     num_processes_preprocessing=args.n_processes_preprocessing,
+                                     num_processes_segmentation_export=args.n_processes_saving,
+                                     folder_with_segs_from_prev_stage=None, num_parts=1, part_id=0)
+    # check if ensemble is desired
+    if ensemble_flag:
+        # status message
+        print(f'\nRun ensemble...\n')
+        # create ensemble output folder
+        ensemble_output_folder = os.path.join(path_to_cache, 'ensemble')
+        if not os.path.exists(ensemble_output_folder):
+            os.makedirs(ensemble_output_folder)
+
+        # run ensembling
+        ensemble_folders(prediction_output_caches, ensemble_output_folder, num_processes=args.n_processes_preprocessing)
+    else:
+        # set ensemble output folder to first folder in prediction output caches
+        ensemble_output_folder = prediction_output_caches[0]
+
+    # check if postprocessing is desired and possible
+    if postprocessing_param_dict:
+        # check if postprocessing pickle file exists
+        if not os.path.exists(os.path.join(path_to_nnunet_results, postprocessing_param_dict['pp_pkl_path'])):
+            # set postprocessing parameter dict to non and print status message that postprocessing is not possible
+            postprocessing_param_dict = None
+            print('Postprocessing is not possible because the pickle file does not exist.')
+    # check if running postprocessing is desired and possible
+    if postprocessing_param_dict:
+        # status message
+        print(f'Run postprocessing...')
+        # load postprocessing pickle files
+        pp_fns, pp_fn_kwargs = load_pickle(os.path.join(path_to_nnunet_results, postprocessing_param_dict['pp_pkl_path']))
+        # run postprocessing
+        apply_postprocessing_to_folder(ensemble_output_folder,
+                                       path_to_output_cache,
+                                       pp_fns,
+                                       pp_fn_kwargs,
+                                       os.path.join(path_to_nnunet_results, postprocessing_param_dict['plans_json_path']),
+                                       num_processes=args.n_processes_preprocessing)
+    else:
+        # set cache output folder to ensemble output folder
+        path_to_output_cache = ensemble_output_folder
 
     gc.collect()
     # print status message
     print(f'Load generated mask...')
     # remove unnecessary variables from memory
     # stitch segmentation mask and load it
-    data_array = processor.stitch_segmentation_mask()
+    data_array = processor.stitch_segmentation_mask(output_cache_path=path_to_output_cache)
     # print status message
     print(f'Save resulting OME TIFF files at "{args.output}"...')
 

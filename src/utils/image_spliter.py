@@ -294,7 +294,11 @@ class IMSProcessor:
         # Status message
         print(f"... finished processing of tile [{tile_id + 1:2d}/{number_of_tiles:2d}].")
 
-    def stitch_segmentation_mask(self):
+    def stitch_segmentation_mask(self, output_cache_path=None):
+        # check if output cache path should be updated
+        if output_cache_path is not None:
+            self.path_to_cache_output = output_cache_path
+
         # get nifti files with the processed segmentations
         segmentation_nifti_file_list = sorted(
             [os.path.join(self.path_to_cache_output, f) for f in os.listdir(self.path_to_cache_output) if

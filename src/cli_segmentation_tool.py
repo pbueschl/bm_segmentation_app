@@ -51,25 +51,13 @@ def main():
     # transform the selected mask to the according dataset id
     args.dataset_id = mask_dataset_id_dict[args.mask_selection]
     # get folds, configuration and trainer
-    args.nnunet_folds, args.nnunet_config, args.nnunet_plans = get_used_nnunet_folds_configuration_and_plan(args.dataset_id)
+    args.inference_inst_dict = get_used_nnunet_folds_configuration_and_plan(args.dataset_id)
 
     # modify channels_of_interest dict
-    if args.mask_selection == 'vessels':
-        channels_of_interest = {
-            'dapi': channels_of_interest['dapi'],
-            args.channel_selection: channels_of_interest[args.channel_selection],
-        }
-    if args.mask_selection == 'tissue':
-        channels_of_interest = {
-            'dapi': channels_of_interest['dapi'],
-            args.channel_selection: channels_of_interest[args.channel_selection],
-        }
-
-    if args.mask_selection == 'dilated_vessels':
-        channels_of_interest = {
-            'dapi': channels_of_interest['dapi'],
-            args.channel_selection: channels_of_interest[args.channel_selection],
-        }
+    channels_of_interest = {
+        'dapi': channels_of_interest['dapi'],
+        args.channel_selection: channels_of_interest[args.channel_selection],
+    }
 
     # call inference function to generate desired mask
     inference(args, channels_of_interest, gpu_id=args.gpu_id, tile_scaling_factor=args.tile_scaling_factor)

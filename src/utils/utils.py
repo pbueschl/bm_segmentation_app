@@ -109,13 +109,62 @@ def get_used_nnunet_folds_configuration_and_plan(dataset_id):
     # Regular expression to match the desired flags and their values in nnUNetv2_predict command
     pattern = r"nnUNetv2_predict.*?-f\s+([0-9\s]+).*?-c\s+(\S+).*?-p\s+(\S+)"
     # Search for matches
-    matches = re.search(pattern, file_content, re.DOTALL)
-    if matches:
-        f_values = matches.group(1).split()
-        f_values = list(map(int, f_values))
-        c_value = matches.group(2)
-        p_value = matches.group(3)
-        return f_values, c_value, p_value
+    matches = re.findall(pattern,file_content,re.DOTALL)
+    # initialize predict value list
+    predict_value_list = []
+    # iterate found matches
+    for values in matches:
+        # split found matches
+        value_dict = {'folds': list(map(int, values[0].split())),
+                      'config': values[1],
+                      'plan': values[2]}
+        # append values dict to predict value list
+        predict_value_list.append(value_dict)
+
+    if len(matches)>0:
+        # initialize predict value list
+        predict_value_list = []
+        # iterate found matches
+        for values in matches:
+            # split found matches
+            value_dict = {'folds': list(map(int, values[0].split())),
+                          'config': values[1],
+                          'plan': values[2]}
+            # append values dict to predict value list
+            predict_value_list.append(value_dict)
+
+        # look if ensemble is needed for inference
+        pattern = r"nnUNetv2_ensemble"
+        match_ensemble = re.search(pattern, file_content)
+
+        pattern = (
+            r"nnUNetv2_apply_postprocessing.*?"
+            r"-pp_pkl_file\s+(\S*nnUNet_results\S+)\s+"
+            r"-np\s+\d+\s+"  # Allows flexibility for the -np argument
+            r"-plans_json\s+(\S*nnUNet_results\S+)"
+        )
+
+        match = re.search(pattern, file_content, re.DOTALL)
+
+        if match is None:
+            postprocessing_dict = None
+        else:
+            pp_pkl_path = match.group(1)
+            plans_json_path = match.group(2)
+
+            # Trim paths to start from "nnUNet_results"
+            pp_pkl_relative = pp_pkl_path.split("nnUNet_results/", 1)[-1]
+            plans_json_relative = plans_json_path.split("nnUNet_results/", 1)[-1]
+            postprocessing_dict = {
+                'pp_pkl_path': pp_pkl_relative,
+                'plans_json_path': plans_json_relative
+            }
+        # initialize return dict
+        return_dict = {'predict_param_list': predict_value_list,
+                       'ensemble_flag':bool(match_ensemble),
+                       'postprocessing_dict': postprocessing_dict}
+        # return the return dict
+        return return_dict
     else:
         # raise error that desired values could not be determined
         raise ValueError(f'The desired values for folds, configuration and nnUNet plan could not be determined in the '
