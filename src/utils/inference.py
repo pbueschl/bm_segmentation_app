@@ -96,7 +96,7 @@ def check_ram_usage(all_variables):
             print(f"EXCEPTION for variable: {name} ")
 
 
-def inference(args, channels_of_interest, gpu_id=0, patch_scaling_factor=None):
+def inference(args, channels_of_interest, gpu_id=0, patch_scaling_factor=None, debug_flag=False):
     """
 
     :param gpu_id:
@@ -113,7 +113,11 @@ def inference(args, channels_of_interest, gpu_id=0, patch_scaling_factor=None):
     remove_old_cache_dirs(os.getcwd(), '2d')
     # create cache directory for saving files needed for running inference
     path_to_cache = f'cache_{time.strftime("%Y%m%d_%H%M%S")}'
-
+    # check if debug flag is set
+    if debug_flag:
+        # extend cach path by debug parent directory
+        path_to_cache = os.path.join(os.getcwd(), 'debug', path_to_cache)
+    # check if cache directory already exists, if so, remove it
     if os.path.exists(path_to_cache):
         shutil.rmtree(path_to_cache)
     os.makedirs(path_to_cache)
@@ -244,7 +248,8 @@ def inference(args, channels_of_interest, gpu_id=0, patch_scaling_factor=None):
     # save resulting ome tiff file
     create_metadict_and_save_ome_tiff_file(data_array[:,np.newaxis], [mask_name], processor.input_metadata, path_to_output_ome_tiff_file)
     # remove cache directory
-    shutil.rmtree(path_to_cache)
+    if not debug_flag:
+        shutil.rmtree(path_to_cache)
     # remove deleted variable from memory
     gc.collect()
     # print status message

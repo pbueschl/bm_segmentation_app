@@ -45,6 +45,7 @@ def main():
     # add arguments for a patch scaling factor
     parser.add_argument('-ps', '--patch_scaling_factor', type=float, default=0.5,
                         help='Define the patch scaling factor.')
+    parser.add_argument('-d', '--debug', action='store_true', help='Debugging Mode - keeps cache files')
     # parse the arguments
     args = parser.parse_args()
 
@@ -60,7 +61,7 @@ def main():
     }
 
     # call inference function to generate desired mask
-    inference(args, channels_of_interest, gpu_id=args.gpu_id, patch_scaling_factor=args.patch_scaling_factor)
+    inference(args, channels_of_interest, gpu_id=args.gpu_id, patch_scaling_factor=args.patch_scaling_factor, debug_flag=args.debug)
 
 
 if __name__ == "__main__":
